@@ -18,7 +18,7 @@ BASE_URL = "https://www.lcsc.com/category/874.html"  # Single FETs, MOSFETs
 MAX_PAGES = 0
 
 # Output Excel filename
-OUTPUT_FILE = "data.xlsx"
+OUTPUT_FILE = "single.xlsx"
 
 # Request timeout in seconds
 TIMEOUT = 20

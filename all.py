@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 MAX_PAGES = 0
 
 # Output Excel filename (multi-sheet workbook)
-OUTPUT_FILE = "lcsc_all_categories.xlsx"
+OUTPUT_FILE = "all.xlsx"
 
 # Request timeout in seconds
 TIMEOUT = 20

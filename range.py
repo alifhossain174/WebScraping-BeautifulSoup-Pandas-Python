@@ -19,10 +19,10 @@ MAX_PAGES = 0
 #   1–50   => CATEGORY_ID_START = 1, CATEGORY_ID_END = 50
 #   51–100 => CATEGORY_ID_START = 51, CATEGORY_ID_END = 100
 CATEGORY_ID_START = 1      # <<< CHANGED
-CATEGORY_ID_END = 63       # <<< CHANGED
+CATEGORY_ID_END = 50       # <<< CHANGED
 
 # Output Excel filename (multi-sheet workbook)
-OUTPUT_FILE = "lcsc_all_categories.xlsx"
+OUTPUT_FILE = "range.xlsx"
 
 # Request timeout in seconds
 TIMEOUT = 20

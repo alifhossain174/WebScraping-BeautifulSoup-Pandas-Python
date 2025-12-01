@@ -1,8 +1,8 @@
 import time
 import re
-import json
 from urllib.parse import urlparse
 from typing import Optional, List, Dict, Tuple
+import json  # <-- NEW
 
 import requests
 import pandas as pd
@@ -15,9 +15,10 @@ from bs4 import BeautifulSoup
 #   positive int  => min(MAX_PAGES, API_totalPage) pages.
 MAX_PAGES = 0
 
-# NEW: category ID range filter (inclusive)
-CATEGORY_ID_START = 1
-CATEGORY_ID_END = 50
+# Category ID range filter (inclusive).
+# Only categories with id between CAT_ID_START and CAT_ID_END will be scraped.
+CAT_ID_START = 1
+CAT_ID_END = 50
 
 # Output Excel filename (multi-sheet workbook)
 OUTPUT_FILE = "rangeWithSpecs.xlsx"
@@ -46,10 +47,6 @@ HEADERS = {
     ),
 }
 
-# Cache for detail pages so we don't fetch the same product detail multiple times
-# lcsc_code -> (description_from_detail, specs_dict)
-DETAIL_CACHE: Dict[str, Tuple[str, Dict[str, Optional[str]]]] = {}
-
 # ------------------------------------------------------------------
 
 
@@ -72,13 +69,13 @@ def validate_product(product: Dict[str, str]) -> bool:
     """Validate that product data looks reasonable."""
     if not product.get("mpn") or not product.get("lcsc_code") or not product.get("manufacturer"):
         return False
-    
+
     if not re.match(r"^C\d{4,}$", product["lcsc_code"]):
         return False
-    
+
     if len(product["mpn"]) < 2:
         return False
-    
+
     return True
 
 
@@ -86,90 +83,90 @@ def clean_description(desc: str) -> str:
     """Clean and normalize description text."""
     if not desc:
         return ""
-    
+
     desc = " ".join(desc.split())
     desc = re.sub(r'\s*\$[\d,.]+.*$', '', desc)
     desc = re.sub(r'\s*US\$[\d,.]+.*$', '', desc)
     desc = re.sub(r'\s+\d+\s*pcs.*$', '', desc)
-    
+
     if len(desc) > 200:
         desc = desc[:200].rsplit(' ', 1)[0] + "..."
-    
+
     return desc.strip()
-
-
-def fetch_detail_info(lcsc_code: str) -> Tuple[str, Dict[str, Optional[str]]]:
-    """
-    Fetch the product detail page once and return:
-      (description_from_detail, specs_dict)
-
-    specs_dict is built from the 'Products Specifications' table:
-      { Type: Description, ... }
-    """
-    if not lcsc_code:
-        return "", {}
-
-    if lcsc_code in DETAIL_CACHE:
-        return DETAIL_CACHE[lcsc_code]
-
-    detail_url = f"https://www.lcsc.com/product-detail/{lcsc_code}.html"
-    html = fetch_html(detail_url)
-    if html is None:
-        DETAIL_CACHE[lcsc_code] = ("", {})
-        return DETAIL_CACHE[lcsc_code]
-
-    soup = BeautifulSoup(html, "lxml")
-    text = soup.get_text(separator=" ")
-
-    # ----- Description extraction (same regex logic as before) -----
-    m = re.search(
-        r"Description\s+(.+?)(?:\s+Datasheet|\s+##\s+Products\s+Specifications|\s+Type\s+Description|$)",
-        text
-    )
-    if m:
-        desc = clean_description(m.group(1))
-    else:
-        desc = ""
-
-    # ----- Product Specifications table parsing -----
-    specs: Dict[str, Optional[str]] = {}
-
-    # Find table whose headers are "Type" and "Description"
-    for table in soup.find_all("table"):
-        headers = [th.get_text(strip=True) for th in table.find_all("th")]
-        if len(headers) < 2:
-            continue
-        if headers[0].strip().lower() == "type" and headers[1].strip().lower() == "description":
-            # This looks like the Products Specifications table
-            for row in table.find_all("tr")[1:]:  # skip header
-                cells = row.find_all(["td", "th"])
-                if len(cells) < 2:
-                    continue
-                key = cells[0].get_text(" ", strip=True)
-                val = cells[1].get_text(" ", strip=True)
-                if key:
-                    specs[key] = val if val != "" else None
-            break
-
-    DETAIL_CACHE[lcsc_code] = (desc, specs)
-    return DETAIL_CACHE[lcsc_code]
 
 
 def fetch_description_from_detail(lcsc_code: str) -> str:
     """
-    Fetch only the 'Description' field text from detail page via fetch_detail_info.
+    Fetch the product detail page and extract the 'Description' field text.
     Used as a fallback if the API description is missing.
     """
-    desc, _ = fetch_detail_info(lcsc_code)
-    return desc
+    if not lcsc_code:
+        return ""
+
+    detail_url = f"https://www.lcsc.com/product-detail/{lcsc_code}.html"
+    html = fetch_html(detail_url)
+    if html is None:
+        return ""
+
+    soup = BeautifulSoup(html, "lxml")
+    text = soup.get_text(separator=" ")
+
+    m = re.search(
+        r"Description\s+(.+?)(?:\s+Datasheet|\s+##\s+Products\s+Specifications|\s+Type\s+Description|$)",
+        text
+    )
+    if not m:
+        return ""
+
+    desc = m.group(1)
+    return clean_description(desc)
 
 
-def fetch_product_specs(lcsc_code: str) -> Dict[str, Optional[str]]:
+def build_specs_from_item(item: Dict) -> Dict[str, Optional[str]]:
     """
-    Fetch the 'Products Specifications' table as a dict:
-      { Type: Description, ... }
+    Build a full specification dict from the API item:
+      - Category / Manufacturer / Package
+      - All entries in paramVOList (Type → Description)
     """
-    _, specs = fetch_detail_info(lcsc_code)
+    specs: Dict[str, Optional[str]] = {}
+
+    # Category (full English catalog name)
+    cat = (item.get("wmCatalogNameEn")
+           or item.get("firstWmCatalogNameEn")
+           or item.get("secondWmCatalogNameEn")
+           or item.get("thirdWmCatalogNameEn"))
+    if cat:
+        specs["Category"] = cat.strip()
+
+    # Manufacturer
+    manu = item.get("brandNameEn")
+    if manu:
+        specs["Manufacturer"] = manu.strip()
+
+    # Package – there are multiple possible fields; try them in order
+    pkg = (
+        item.get("encapStandard")
+        or item.get("encapEn")
+        or item.get("encap")
+        or item.get("packageEn")
+    )
+    if pkg:
+        specs["Package"] = pkg.strip()
+
+    # All paramVOList entries (this is where Width, Thickness, Function, etc. live)
+    for p in item.get("paramVOList") or []:
+        name = (p.get("paramNameEn") or p.get("paramName") or "").strip()
+        value = (p.get("paramValueEn") or p.get("paramValue") or "").strip()
+
+        if not name or not value:
+            continue
+
+        # Avoid overwriting core keys if they already exist
+        if name in specs:
+            continue
+
+        specs[name] = value
+
     return specs
 
 
@@ -258,14 +255,14 @@ def fetch_products_page_api(
         else:
             description = desc_api
 
-        # Product specifications from detail page (JSON)
-        specs_dict = fetch_product_specs(lcsc_code)
-        product_spec_json = json.dumps(specs_dict, ensure_ascii=False) if specs_dict else ""
-
         # Category hierarchy (top-level, second-level, third-level)
         category = (item.get("firstWmCatalogNameEn") or "").strip()
         subcategory = (item.get("secondWmCatalogNameEn") or "").strip()
         childcategory = (item.get("thirdWmCatalogNameEn") or "").strip()
+
+        # --- NEW: build full specs dict from API (includes Thickness, Width, etc.) ---
+        specs_dict = build_specs_from_item(item)
+        specs_json = json.dumps(specs_dict, ensure_ascii=False)
 
         product = {
             "mpn": mpn,
@@ -275,7 +272,7 @@ def fetch_products_page_api(
             "category": category,
             "subcategory": subcategory,
             "childcategory": childcategory,
-            "product_spec": product_spec_json,   # <<< NEW COLUMN
+            "specs_json": specs_json,  # NEW COLUMN
         }
 
         if validate_product(product):
@@ -361,10 +358,10 @@ def scrape_lcsc_category(base_url: str, max_pages: int) -> pd.DataFrame:
             "lcsc_code",
             "manufacturer",
             "description",
-            "product_spec",   # <<< keep this near description
             "category",
             "subcategory",
             "childcategory",
+            "specs_json",  # NEW
             "page",
         ]
     ]
@@ -391,6 +388,10 @@ def get_all_category_urls() -> List[Tuple[int, str, str]]:
             continue
         cat_id = int(m.group(1))
 
+        # Apply ID range filter here
+        if cat_id < CAT_ID_START or cat_id > CAT_ID_END:
+            continue
+
         # Get visible text as category name
         name = (a.get_text(strip=True) or "").strip()
         if not name:
@@ -410,7 +411,7 @@ def get_all_category_urls() -> List[Tuple[int, str, str]]:
             categories[cat_id] = (cat_id, full_url, name)
 
     cat_list = list(categories.values())
-    print(f"[i] Discovered {len(cat_list)} category URLs from {CATEGORY_INDEX_URL}")
+    print(f"[i] Discovered {len(cat_list)} category URLs in ID range [{CAT_ID_START}, {CAT_ID_END}] from {CATEGORY_INDEX_URL}")
     return cat_list
 
 
@@ -438,40 +439,29 @@ def make_excel_sheet_name(raw_name: str, fallback: str, used: set) -> str:
 
 def main():
     print("=" * 80)
-    print("LCSC WEB SCRAPER - ALL CATEGORIES → MULTI-SHEET EXCEL")
+    print("LCSC WEB SCRAPER - ALL CATEGORIES → MULTI-SHEET EXCEL (WITH SPECS JSON)")
     print("=" * 80)
     print(f"MAX_PAGES cap per category: {MAX_PAGES} (0 = no cap)")
-    print(f"CATEGORY_ID range: {CATEGORY_ID_START} to {CATEGORY_ID_END}")
+    print(f"Category ID range: [{CAT_ID_START}, {CAT_ID_END}]")
     print(f"Debug mode: {DEBUG_MODE}")
     print("=" * 80 + "\n")
 
-    # Discover all categories from the site
+    # Discover all categories from the site (within ID range)
     cat_list = get_all_category_urls()
     if not cat_list:
         print("[!] No categories discovered; aborting.")
         return
 
-    # Filter by category ID range (inclusive)
-    filtered_cat_list = [
-        (cat_id, url, name)
-        for (cat_id, url, name) in cat_list
-        if CATEGORY_ID_START <= cat_id <= CATEGORY_ID_END
-    ]
-    print(f"[i] Discovered {len(cat_list)} categories total; "
-          f"{len(filtered_cat_list)} in requested ID range.\n")
-
-    if not filtered_cat_list:
-        print("[!] No categories fall into the given ID range; aborting.")
-        return
+    print(f"[i] Will scrape {len(cat_list)} categories.\n")
 
     total_products_all = 0
     used_sheet_names = set()
 
     try:
         with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
-            for idx, (cat_id, base_url, cat_name) in enumerate(filtered_cat_list, start=1):
+            for idx, (cat_id, base_url, cat_name) in enumerate(cat_list, start=1):
                 print("\n" + "-" * 80)
-                print(f"[{idx}/{len(filtered_cat_list)}] Category ID {cat_id}: {cat_name}")
+                print(f"[{idx}/{len(cat_list)}] Category ID {cat_id}: {cat_name}")
                 print(f"    URL: {base_url}")
 
                 df = scrape_lcsc_category(base_url, MAX_PAGES)
@@ -502,8 +492,8 @@ def main():
                 total_products_all += len(df)
 
         print("\n" + "=" * 80)
-        print(f"[✓] Finished scraping categories in ID range {CATEGORY_ID_START}–{CATEGORY_ID_END}.")
-        print(f"[+] Total products scraped across those categories: {total_products_all}")
+        print(f"[✓] Finished scraping all categories.")
+        print(f"[+] Total products scraped across all categories: {total_products_all}")
         print(f"[+] Output Excel file: {OUTPUT_FILE}")
         print("=" * 80)
 
