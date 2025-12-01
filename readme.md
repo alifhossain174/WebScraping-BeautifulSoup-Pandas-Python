@@ -1,15 +1,17 @@
-# LCSC Web Scraper
+# LCSC Web Scraper Suite
 
-A Python web scraper that extracts electronic component data from LCSC (LCS Components) product categories using their JSON API, with automatic pagination and data export to Excel/CSV.
+A comprehensive Python web scraping toolkit for extracting electronic component data from LCSC (LCS Components) product categories using their JSON API, with multiple scripts for different scraping scenarios.
 
 ## Features
 
 - **API-Based Scraping**: Uses LCSC's product-list API for reliable, fast data extraction
 - **Automatic Pagination**: Automatically detects and fetches all pages in a category
-- **Flexible Category Selection**: Scrape any LCSC product category by changing the URL
+- **Multiple Scraping Modes**: Single category, multiple categories, or category ranges
 - **Data Validation**: Ensures product data integrity before export
 - **Fallback Descriptions**: Automatically fetches detailed descriptions from product pages if API data is missing
+- **Specification Extraction**: Advanced script to extract detailed product specifications
 - **Excel & CSV Export**: Saves data to Excel (`.xlsx`) with automatic fallback to CSV
+- **Multi-Sheet Workbooks**: Organizes scraped data into separate sheets by category
 - **Configurable Limits**: Set maximum pages to scrape or fetch all available data
 - **Debug Mode**: Optional debug logging for troubleshooting
 - **Error Handling**: Robust request handling with timeouts and retry logic
@@ -25,6 +27,95 @@ A Python web scraper that extracts electronic component data from LCSC (LCS Comp
 - **pandas**: Data manipulation and Excel export
 - **openpyxl**: Excel file writing
 
+## Scripts Overview
+
+### 1. `single.py` - Scrape Single Category
+Scrapes a single LCSC product category by URL.
+
+**Best for**: Extracting data from one specific product category
+
+**Configuration**:
+```python
+BASE_URL = "https://www.lcsc.com/category/874.html"  # Change to any category
+MAX_PAGES = 0  # 0 = all pages, or set a limit (e.g., 5)
+OUTPUT_FILE = "data.xlsx"
+```
+
+**Run**:
+```bash
+python single.py
+```
+
+---
+
+### 2. `all.py` - Scrape All Categories
+Automatically discovers and scrapes all product categories from LCSC.
+
+**Best for**: Creating a complete database of all LCSC products
+
+**Configuration**:
+```python
+MAX_PAGES = 0  # Maximum pages per category
+OUTPUT_FILE = "lcsc_all_categories.xlsx"  # Multi-sheet workbook
+```
+
+**Run**:
+```bash
+python all.py
+```
+
+**Output**: One Excel sheet per category
+
+---
+
+### 3. `multiple_v2.py` - Scrape Category Range
+Scrapes a range of categories by ID (inclusive).
+
+**Best for**: Scraping specific category segments in batches
+
+**Configuration**:
+```python
+CATEGORY_ID_START = 1   # Starting category ID (inclusive)
+CATEGORY_ID_END = 63    # Ending category ID (inclusive)
+MAX_PAGES = 0           # Maximum pages per category
+OUTPUT_FILE = "lcsc_all_categories.xlsx"
+```
+
+**Run**:
+```bash
+python multiple_v2.py
+```
+
+**Example**: To scrape categories 50-100:
+```python
+CATEGORY_ID_START = 50
+CATEGORY_ID_END = 100
+```
+
+---
+
+### 4. `rangeWithSpecs.py` - Scrape Range with Specifications
+Scrapes a category range AND extracts detailed product specifications.
+
+**Best for**: Building a comprehensive product database with detailed specs
+
+**Configuration**:
+```python
+CATEGORY_ID_START = 1   # Starting category ID
+CATEGORY_ID_END = 50    # Ending category ID
+MAX_PAGES = 0           # Maximum pages per category
+OUTPUT_FILE = "rangeWithSpecs.xlsx"
+```
+
+**Run**:
+```bash
+python rangeWithSpecs.py
+```
+
+**Additional Output**: Includes specification columns (e.g., voltage, current, frequency) extracted from product detail pages
+
+---
+
 ## Installation
 
 1. Clone or download this repository
@@ -33,34 +124,43 @@ A Python web scraper that extracts electronic component data from LCSC (LCS Comp
 pip install -r requirements.txt
 ```
 
-## Configuration
+## Common Configuration
 
-Edit the configuration section at the top of `main.py`:
+All scripts share these configurable settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `BASE_URL` | `"https://www.lcsc.com/category/874.html"` | LCSC category URL to scrape |
-| `MAX_PAGES` | `0` | Maximum pages to fetch (0 = all pages, positive int = limit) |
-| `OUTPUT_FILE` | `"data.xlsx"` | Output filename for scraped data |
+| `MAX_PAGES` | `0` | Maximum pages per category (0 = all pages) |
+| `OUTPUT_FILE` | Varies | Output filename for scraped data |
 | `TIMEOUT` | `20` | Request timeout in seconds |
 | `DELAY` | `1.0` | Delay between requests (seconds) to avoid rate limiting |
 | `DEBUG_MODE` | `False` | Enable debug logging |
 
-### Changing the Category
+## Usage Examples
 
-Replace `BASE_URL` with any LCSC category URL:
-```python
-BASE_URL = "https://www.lcsc.com/category/874.html"  # Single FETs, MOSFETs
-# Example alternatives:
-# BASE_URL = "https://www.lcsc.com/category/1.html"  # Capacitors
-# BASE_URL = "https://www.lcsc.com/category/2.html"  # Resistors
+### Quick Start - Single Category
+```bash
+python single.py
+# Output: data.xlsx with ~25 products (adjustable via MAX_PAGES)
 ```
 
-## Usage
-
-Run the script:
+### Complete Catalog
 ```bash
-python main.py
+python all.py
+# Output: lcsc_all_categories.xlsx with all categories as separate sheets
+```
+
+### Specific Range
+```bash
+# Edit multiple_v2.py to set CATEGORY_ID_START and CATEGORY_ID_END
+python multiple_v2.py
+```
+
+### With Specifications
+```bash
+# Edit rangeWithSpecs.py to set category range
+python rangeWithSpecs.py
+# Output includes detailed product specifications
 ```
 
 ### Example Output
@@ -89,9 +189,9 @@ Debug mode: False
 [✓] Done! Data saved successfully.
 ```
 
-## Output Data
+## Output Data Format
 
-The exported file contains the following columns:
+All scripts export data with these common columns:
 
 | Column | Description |
 |--------|-------------|
@@ -104,28 +204,36 @@ The exported file contains the following columns:
 | `childcategory` | Third-level category |
 | `page` | Page number from which the product was scraped |
 
+**`rangeWithSpecs.py` adds**: Additional specification columns extracted from product detail pages (voltage, current, frequency, etc.)
+
 ## How It Works
 
-1. **Parse Category ID**: Extracts the catalog ID from the LCSC category URL
-2. **Fetch from API**: Calls LCSC's product-list API (`wmsc.lcsc.com/ftps/wm/product/query/list`) with pagination
+1. **Parse Categories**: Discovers category IDs from LCSC or uses specified range
+2. **Fetch from API**: Calls LCSC's product-list API with pagination
 3. **Validate Data**: Checks that each product has required fields (MPN, LCSC code, manufacturer)
 4. **Clean Descriptions**: Removes prices, quantity markers, and truncates long text
-5. **Fallback Handling**: If API description is empty, fetches from the product detail page
-6. **Deduplicate**: Uses MPN + LCSC code as unique key to avoid duplicates
-7. **Export**: Saves cleaned data to Excel or CSV
+5. **Fallback Handling**: If API description is empty, fetches from product detail page
+6. **Extract Specs** (rangeWithSpecs only): Parses HTML to extract detailed specifications
+7. **Deduplicate**: Uses MPN + LCSC code as unique key to avoid duplicates
+8. **Export**: Saves cleaned data to Excel or CSV
 
-## API Details
+## Advanced Features
 
-The scraper uses LCSC's internal API endpoint:
-```
-POST https://wmsc.lcsc.com/ftps/wm/product/query/list
-```
+### Specification Extraction (rangeWithSpecs.py)
+- Extracts detailed product specifications from detail pages
+- Caches detail page fetches to minimize requests
+- Parses HTML specification tables
+- Adds specification columns to output
 
-**Request payload includes:**
-- `catalogIdList`: Product category ID
-- `currentPage`: Page number (1-indexed)
-- `pageSize`: 25 products per page
-- Other filters: brand, encapsulation, stock status, etc.
+### Multi-Sheet Workbooks (all.py & multiple_v2.py)
+- Creates separate Excel sheets for each category
+- Sheet names derived from category titles
+- Better organization for large datasets
+
+### Deduplication
+- Uses MPN + LCSC code as unique identifier
+- Prevents duplicate entries across multiple scraping runs
+- Tracks seen products across all pages
 
 ## Tips & Tricks
 
@@ -134,41 +242,88 @@ POST https://wmsc.lcsc.com/ftps/wm/product/query/list
 - **Slow Down**: Increase `DELAY` to 2.0+ if getting rate-limited
 - **Debug Issues**: Set `DEBUG_MODE = True` to see detailed API response info
 - **Custom Timeout**: Adjust `TIMEOUT` if requests are failing on slow connections
+- **Test First**: Start with `MAX_PAGES = 1` to verify the script works
+- **Batch Processing**: Use `multiple_v2.py` with small ranges (e.g., 20 categories at a time)
+
+## API Details
+
+All scripts use LCSC's internal API endpoint:
+```
+POST https://wmsc.lcsc.com/ftps/wm/product/query/list
+```
+
+**Request payload includes:**
+- `catalogIdList`: Product category ID(s)
+- `currentPage`: Page number (1-indexed)
+- `pageSize`: 25 products per page
+- Other filters: brand, encapsulation, stock status, etc.
 
 ## Error Handling
 
-The script handles common errors gracefully:
-- **Network errors**: Prints error message and skips page
+All scripts handle common errors gracefully:
+- **Network errors**: Prints error message and skips page/category
 - **Timeout errors**: Logs timeout and continues to next page
 - **Invalid JSON**: Handles malformed API responses
 - **Missing dependencies**: Provides installation instructions
-- **Invalid URLs**: Detects invalid category URLs and exits gracefully
+- **API failures**: Gracefully handles API errors and continues
 
 ## Limitations
 
 - Limited to LCSC categories (cannot scrape arbitrary websites)
 - API page limit: typically 25 products per page
 - Respects server rate limits via configurable delays
-- Description fallback requires additional requests (slower)
+- Description/spec fallback requires additional requests (slower)
+- Category discovery limited to LCSC's category index
+
+## Performance Considerations
+
+| Script | Speed | Data Volume | Best Use Case |
+|--------|-------|-------------|---------------|
+| `single.py` | ⚡ Fast | ~25-500 products | Testing, quick scrapes |
+| `all.py` | 🐌 Slow | Entire catalog | Complete database |
+| `multiple_v2.py` | ⚡⚡ Medium | Batch processing | Segment catalog scraping |
+| `rangeWithSpecs.py` | 🐢 Very slow | Detailed specs | In-depth product analysis |
 
 ## Troubleshooting
 
 ### No data scraped
-- Verify `BASE_URL` is a valid LCSC category page
+- Verify URL/category IDs are valid
 - Check your internet connection
-- Try increasing `TIMEOUT` value
+- Try increasing `TIMEOUT` value to 30+
+- Enable `DEBUG_MODE` to see API responses
 
 ### Missing descriptions
 - Some products may not have descriptions on LCSC
 - Enable `DEBUG_MODE` to see which products are missing data
+- Try `rangeWithSpecs.py` which fetches from detail pages
 
-### Rate limiting
+### Rate limiting (HTTP 429)
 - Increase `DELAY` value (e.g., to 2.0 or higher)
-- Reduce `MAX_PAGES` to fetch fewer pages
+- Reduce `MAX_PAGES` to fetch fewer pages per category
+- Try running smaller category ranges with breaks
 
 ### Excel export fails
 - Ensure `openpyxl` is installed: `pip install openpyxl`
 - The script will automatically save to CSV as a fallback
+- Check disk space availability
+
+### Slow performance
+- Reduce `MAX_PAGES` if fetching many categories
+- Increase `DELAY` between categories (adds time but reduces API stress)
+- Don't run multiple scripts simultaneously
+
+## Project Structure
+
+```
+web-scraping/
+├── single.py              # Single category scraper
+├── all.py                 # All categories scraper
+├── multiple_v2.py         # Category range scraper
+├── rangeWithSpecs.py      # Range + specifications scraper
+├── requirements.txt       # Python dependencies
+├── README.md              # This file
+└── *.xlsx                 # Generated output files
+```
 
 ## License
 
