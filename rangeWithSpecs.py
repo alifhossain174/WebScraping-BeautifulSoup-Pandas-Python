@@ -17,11 +17,11 @@ MAX_PAGES = 0
 
 # Category ID range filter (inclusive).
 # Only categories with id between CAT_ID_START and CAT_ID_END will be scraped.
-CAT_ID_START = 1
-CAT_ID_END = 50
+CAT_ID_START = 1201
+CAT_ID_END = 1400
 
 # Output Excel filename (multi-sheet workbook)
-OUTPUT_FILE = "rangeWithSpecs.xlsx"
+OUTPUT_FILE = "rangeWithSpecs(1201-1400).xlsx"
 
 # Request timeout in seconds
 TIMEOUT = 20
